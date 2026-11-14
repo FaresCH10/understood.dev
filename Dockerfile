@@ -20,7 +20,7 @@ FROM node:24-bookworm-slim AS runtime
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-ENV NODE_ENV=production
+ENV NODE_ENV=production PORT=80
 WORKDIR /app
 
 COPY --from=build /app/node_modules ./node_modules
@@ -33,5 +33,5 @@ RUN mkdir -p /data/media && chown -R node:node /data /app
 
 USER node
 WORKDIR /app/apps/api
-EXPOSE 3000
+EXPOSE 80
 CMD ["node", "dist/server.js"]

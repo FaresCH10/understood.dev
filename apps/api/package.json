@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch --exclude \"../../node_modules/**\" src/server.ts",
     "build": "tsup",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",

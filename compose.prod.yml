@@ -5,6 +5,7 @@ services:
     env_file: .env.production
     environment:
       PROCESS_ROLE: api
+      PORT: '3000'
       MEDIA_LOCAL_DIR: /data/media
     depends_on:
       redis:

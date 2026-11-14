@@ -17,32 +17,54 @@ interface Envelope<T> {
   meta?: Record<string, unknown>;
 }
 
-type Init = Omit<RequestInit, 'body'> & { body?: unknown };
+type Init = Omit<RequestInit, 'body'> & {
+  body?: unknown;
+  retryOnUnavailable?: boolean;
+};
+
+type ErrorPayload = { code?: string; message?: string; details?: Array<{ field: string; issue: string }> };
+
+async function parsePayload(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 export async function api<T>(path: string, init: Init = {}): Promise<{ data: T; meta: Record<string, unknown> }> {
-  const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) };
+  const { retryOnUnavailable = false, ...request } = init;
+  const headers: Record<string, string> = { ...(request.headers as Record<string, string> | undefined) };
   let body: BodyInit | undefined;
-  if (init.body instanceof FormData) {
-    body = init.body;
-  } else if (init.body !== undefined) {
+  if (request.body instanceof FormData) {
+    body = request.body;
+  } else if (request.body !== undefined) {
     headers['Content-Type'] = 'application/json';
-    body = JSON.stringify(init.body);
+    body = JSON.stringify(request.body);
   }
 
-  const response = await fetch(path, { credentials: 'same-origin', ...init, headers, body });
-  const text = await response.text();
-  let payload: unknown = null;
-  if (text) {
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      payload = null;
-    }
+  let response = await fetch(path, { credentials: 'same-origin', ...request, headers, body });
+  let payload = await parsePayload(response);
+  let error = (payload as { error?: ErrorPayload } | null)?.error;
+
+  // A bare 5xx without our JSON envelope comes from the proxy or gateway, not
+  // the API; callers opt in only for requests that are safe to repeat.
+  if (!response.ok && retryOnUnavailable && response.status >= 500 && !error) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    response = await fetch(path, { credentials: 'same-origin', ...request, headers, body });
+    payload = await parsePayload(response);
+    error = (payload as { error?: ErrorPayload } | null)?.error;
   }
 
   if (!response.ok) {
-    const error = (payload as { error?: { code?: string; message?: string; details?: Array<{ field: string; issue: string }> } } | null)?.error;
-    throw new ApiError(response.status, error?.code ?? 'INTERNAL', error?.message ?? `Request failed (${response.status})`, error?.details);
+    throw new ApiError(
+      response.status,
+      error?.code ?? 'INTERNAL',
+      error?.message ?? (response.status >= 500 ? 'The server is unavailable. Please try again.' : `Request failed (${response.status})`),
+      error?.details,
+    );
   }
 
   const envelope = (payload ?? { data: null }) as Envelope<T>;

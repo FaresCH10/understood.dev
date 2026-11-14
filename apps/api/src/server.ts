@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { createApp } from './app.js';
-import { config } from './config.js';
+import { config, isProduction } from './config.js';
 import { connectMongo, disconnectMongo } from './db.js';
 import { closeKv, getKv } from './stores/kv.js';
 import { closeQueue, getQueue } from './jobs/queue.js';
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  server!.listen(config.PORT, () => {
+  server!.listen(config.PORT, isProduction ? '0.0.0.0' : undefined, () => {
     logger.info({ port: config.PORT, role: config.PROCESS_ROLE }, 'api listening');
   });
 

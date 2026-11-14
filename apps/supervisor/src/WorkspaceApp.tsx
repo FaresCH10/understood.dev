@@ -111,6 +111,7 @@ function StaffAuth({
       if (mode === "register") {
         await api("/api/v1/auth/register", {
           method: "POST",
+          retryOnUnavailable: true,
           body: {
             companyName: form.companyName,
             name: form.name,
