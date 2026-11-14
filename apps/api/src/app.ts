@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
-import { requestId, notFoundHandler, errorHandler } from './http.js';
+import { requestId, notFoundHandler, errorHandler, asyncHandler } from './http.js';
 import { attachSession, requireSameOrigin } from './auth/middleware.js';
 import { mongoHealthy } from './db.js';
 import { getKv } from './stores/kv.js';
@@ -16,6 +16,15 @@ import { sharingRouter } from './modules/sharing/routes.js';
 import { workerRouter } from './modules/worker/routes.js';
 import { boardRouter } from './modules/board/routes.js';
 import { exportsRouter } from './modules/exports/routes.js';
+import { accessRouter } from './modules/access/routes.js';
+import { workerPortalAuthRouter } from './modules/access/worker-auth.js';
+import { operationsRouter, portalRouter } from './modules/operations/routes.js';
+import { requireStaff } from './modules/access/control.js';
+import { User } from './models.js';
+import { AppError } from './errors.js';
+import { signedMediaGuard } from './media/storage.js';
+import { staffPushRouter, portalPushRouter } from './modules/operations/push.js';
+import { privacyRouter, workerPrivacyRouter } from './modules/operations/privacy.js';
 
 export function createApp(): Express {
   const app = express();
@@ -40,10 +49,26 @@ export function createApp(): Express {
   });
 
   app.use('/api/v1', requireSameOrigin);
+  app.use('/api/v1', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   app.use('/api/v1', attachSession);
 
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/access', accessRouter);
+  app.use('/api/v1/portal/auth', workerPortalAuthRouter);
+  app.use('/api/v1/portal', portalPushRouter);
+  app.use('/api/v1/portal/privacy', workerPrivacyRouter);
+  app.use('/api/v1/portal', portalRouter);
+  app.use('/api/v1/operations', staffPushRouter);
+  app.use('/api/v1/operations', privacyRouter);
+  app.use('/api/v1/operations', operationsRouter);
   app.use('/api/v1', workerRouter);
+  // The original link-only API remains available to existing seeded demonstrations.
+  // Password workspaces must use the site-scoped, entitlement-aware operations API.
+  app.use('/api/v1', asyncHandler(async (req, _res, next) => {
+    const context = await requireStaff(req, ['owner']);
+    if (await User.exists({_id: context.user._id, passwordHash: {$exists:true}})) throw new AppError('FORBIDDEN');
+    next();
+  }));
   app.use('/api/v1/org', orgRouter);
   app.use('/api/v1', crewsRouter);
   app.use('/api/v1', workersRouter);
@@ -54,7 +79,7 @@ export function createApp(): Express {
   app.use('/api/v1', exportsRouter);
 
   if (config.MEDIA_DRIVER === 'local') {
-    app.use('/media', express.static(resolve(process.cwd(), config.MEDIA_LOCAL_DIR), { fallthrough: true, index: false }));
+    app.use('/media', signedMediaGuard, express.static(resolve(process.cwd(), config.MEDIA_LOCAL_DIR), { fallthrough: true, index: false }));
   }
 
   app.use(notFoundHandler);

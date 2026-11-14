@@ -19,14 +19,25 @@ import { requireAuth } from '../../auth/middleware.js';
 import { defaultOrgName, defaultUserName } from '../../domain/names.js';
 import { sendEmail } from '../../email/mailer.js';
 import { getKv } from '../../stores/kv.js';
+import { staffAuthRouter } from '../access/staff-auth.js';
+import { requireStaff, entitlementOf } from '../access/control.js';
 
 export const authRouter: Router = Router();
+authRouter.use(staffAuthRouter);
 
 authRouter.post(
   '/magic-link',
   rateLimit({ bucket: 'magic-link-ip', limit: 20, windowSeconds: 3600 }),
   asyncHandler(async (req, res) => {
     const { email } = parseBody(magicLinkRequestSchema, req);
+
+    // Password accounts must use verified password sign-in/recovery. Magic links
+    // remain for existing pilot/demo accounts, never implicit registration.
+    const legacyUser = await User.findOne({ email, disabledAt: null }).select('+passwordHash');
+    if (!legacyUser || legacyUser.passwordHash) {
+      sendData(res, { sent: true }, undefined, 202);
+      return;
+    }
 
     const perEmail = await getKv().incr(`ml:email:${email}`, 3600);
     if (perEmail > 5) throw new AppError('RATE_LIMITED');
@@ -67,26 +78,10 @@ authRouter.get(
       return;
     }
 
-    let user = await User.findOne({ email: link.email });
-    if (!user) {
-      const org = await Organization.create({
-        name: defaultOrgName(link.email),
-        timezone: 'Asia/Dubai',
-        locale: 'en',
-        plan: 'pilot',
-      });
-      try {
-        user = await User.create({
-          orgId: org._id,
-          email: link.email,
-          name: defaultUserName(link.email),
-          role: 'owner',
-        });
-      } catch (error) {
-        const existing = await User.findOne({ email: link.email });
-        if (!existing) throw error;
-        user = existing;
-      }
+    const user = await User.findOne({ email: link.email, disabledAt: null }).select('+passwordHash');
+    if (!user || user.passwordHash) {
+      res.redirect(302, `${config.APP_URL}/signin?error=link_unavailable`);
+      return;
     }
 
     user.lastLoginAt = new Date();
@@ -118,13 +113,12 @@ authRouter.get(
   '/me',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.auth!.userId);
-    const org = await Organization.findById(req.auth!.orgId);
-    if (!user || !org) throw new AppError('AUTH_REQUIRED');
+    const { user, org } = await requireStaff(req);
 
     sendData(res, {
       user: { id: String(user._id), name: user.name ?? '', email: user.email, role: user.role, locale: org.locale },
-      org: { id: String(org._id), name: org.name, timezone: org.timezone, plan: org.plan },
+      org: { id: String(org._id), name: org.name, timezone: org.timezone, plan: org.plan, companyId: org.companyId },
+      entitlement: entitlementOf(org),
     });
   }),
 );

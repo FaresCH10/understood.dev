@@ -1,8 +1,42 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import type { RequestHandler } from 'express';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config.js';
+
+export function localMediaSignature(key: string, expires: number): string {
+  return createHmac('sha256', config.TOKEN_PEPPER).update(`local-media:${key}:${expires}`).digest('base64url');
+}
+
+export function verifyLocalMediaSignature(key: string, expires: string, signature: string, now = Date.now()): boolean {
+  if (!/^\d{10,12}$/.test(expires) || !/^[A-Za-z0-9_-]{43}$/.test(signature)) return false;
+  const seconds = Number(expires);
+  if (seconds <= Math.floor(now / 1000)) return false;
+  const expected = Buffer.from(localMediaSignature(key, seconds));
+  const supplied = Buffer.from(signature);
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
+/** Mount immediately before Express static middleware at /media. */
+export const signedMediaGuard: RequestHandler = (req, res, next) => {
+  let key: string;
+  try {
+    key = decodeURIComponent(req.path).replace(/^\/+/, '');
+  } catch {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Media link unavailable' } });
+    return;
+  }
+  const expires = typeof req.query.exp === 'string' ? req.query.exp : '';
+  const signature = typeof req.query.sig === 'string' ? req.query.sig : '';
+  if (!verifyLocalMediaSignature(key, expires, signature)) {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Media link unavailable' } });
+    return;
+  }
+  res.setHeader('Cache-Control', 'private, no-store');
+  next();
+};
 
 export interface Storage {
   put(key: string, body: Buffer, contentType: string): Promise<void>;
@@ -31,8 +65,11 @@ class LocalStorage implements Storage {
   }
 
   async signedUrl(key: string, ttlSeconds = config.MEDIA_URL_TTL_SECONDS): Promise<{ url: string; expiresAt: Date }> {
+    this.pathFor(key);
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    return { url: `${config.APP_URL}/media/${key}?exp=${Math.floor(expiresAt.getTime() / 1000)}`, expiresAt };
+    const expires = Math.floor(expiresAt.getTime() / 1000);
+    const encoded = key.split('/').map(encodeURIComponent).join('/');
+    return { url: `${config.APP_URL}/media/${encoded}?exp=${expires}&sig=${localMediaSignature(key, expires)}`, expiresAt };
   }
 
   async deletePrefix(prefix: string): Promise<void> {
@@ -41,8 +78,9 @@ class LocalStorage implements Storage {
   }
 
   private pathFor(key: string): string {
-    const target = resolve(join(this.root, key));
-    if (!target.startsWith(this.root)) throw new Error('invalid storage key');
+    const target = resolve(this.root, key);
+    const pathFromRoot = relative(this.root, target);
+    if (!pathFromRoot || pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) throw new Error('invalid storage key');
     return target;
   }
 }

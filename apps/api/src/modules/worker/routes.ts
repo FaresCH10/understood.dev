@@ -55,7 +55,7 @@ async function enqueueHelpAlert(orgId: string, instructionId: string): Promise<v
   await getQueue().enqueue(
     'help_alert',
     { orgId, instructionId },
-    { delay: config.HELP_BATCH_SECONDS * 1000, jobId: `help:${instructionId}:${bucket}` },
+    { delay: config.HELP_BATCH_SECONDS * 1000, jobId: `help_${instructionId}_${bucket}` },
   );
 }
 

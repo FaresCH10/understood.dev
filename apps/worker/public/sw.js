@@ -1,39 +1,6 @@
-const CACHE = 'understood-worker-v1';
-const SHELL = ['/i/', '/i/manifest.webmanifest', '/i/icon.svg'];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
-  );
-});
-
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return;
-  if (!url.pathname.startsWith('/i/')) return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => undefined);
-        }
-        return response;
-      })
-      .catch(async () => {
-        const cached = await caches.match(event.request);
-        if (cached) return cached;
-        const shell = await caches.match('/i/');
-        return shell ?? Response.error();
-      }),
-  );
-});
+const CACHE='understood-shell-v2';
+self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(['/i/','/i/manifest.webmanifest','/i/icon.svg'])).then(()=>self.skipWaiting()));});
+self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('understood-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
+self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==location.origin||!url.pathname.startsWith('/i/'))return;event.respondWith(fetch(event.request).then(response=>{if(response.ok)caches.open(CACHE).then(cache=>cache.put(event.request,response.clone())).catch(()=>undefined);return response;}).catch(async()=>await caches.match(event.request)||await caches.match('/i/')||Response.error()));});
+self.addEventListener('push',event=>{let data={};try{data=event.data.json();}catch{}event.waitUntil(self.registration.showNotification(data.title||'Understood',{body:data.body||'You have a new update.',icon:'/i/icon.svg',data:{url:data.url||'/i/'},tag:data.tag||'understood-update'}));});
+self.addEventListener('notificationclick',event=>{event.notification.close();const raw=event.notification.data?.url||'/i/';const url=new URL(raw,self.location.origin);event.waitUntil(clients.openWindow(url.origin===self.location.origin&&url.pathname.startsWith('/i/')?url.href:'/i/'));});

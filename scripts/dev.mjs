@@ -165,7 +165,7 @@ async function ensureDemoUser() {
   await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 10_000 });
   let exists = false;
   try {
-    exists = (await mongoose.connection.db.collection('users').countDocuments({ email: DEMO_EMAIL })) > 0;
+    exists = (await mongoose.connection.db.collection('users').countDocuments({ email: DEMO_EMAIL, passwordHash: { $exists: true } })) > 0;
   } finally {
     await mongoose.disconnect();
   }
@@ -283,6 +283,8 @@ async function main() {
     console.log(` ${signInUrl}`);
   }
   console.log(`\n Demo email : ${DEMO_EMAIL}`);
+  console.log(` Demo password: ${process.env.DEMO_PASSWORD ?? 'Understood-demo-2026!'}`);
+  console.log(' Worker company: understood-demo | IDs: W001, W002, W003 | same demo password');
   console.log(' Stop       : press Ctrl+C');
   console.log(`${'='.repeat(64)}\n`);
 }

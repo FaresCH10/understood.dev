@@ -517,7 +517,7 @@ export function SharePage({ token }: { token: string }) {
                 onClick={() => void answer(index as 0 | 1 | 2)}
               >
                 <span className="letter" aria-hidden="true">
-                  {LETTERS[uiLang][index] ?? LETTERS[uiLang][0]}
+                  {(LETTERS[uiLang] ?? LETTERS.en!)[index] ?? 'A'}
                 </span>
                 <span className={FONT_CLASS[uiLang]} lang={uiLang}>
                   {option}

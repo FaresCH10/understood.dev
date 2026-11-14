@@ -3,8 +3,12 @@ import { runVariantJob, type VariantJobPayload } from '../modules/pipeline/runne
 import { runTranscriptionJob, type TranscriptionJobPayload } from '../modules/pipeline/transcription.js';
 import { runOrgDeletionJob, type OrgDeletionPayload } from '../modules/org/deletion.js';
 import { runHelpAlertJob, type HelpAlertPayload } from '../modules/worker/help-alert.js';
+import { runPreparation } from '../modules/operations/service.js';
 
 export function registerPipelineJobs(): void {
+  registerJobHandler('operation', async (_name, data) => {
+    await runPreparation(data as { instructionId: string; generation: number });
+  });
   registerJobHandler('transcribe', async (_name, data) => {
     await runTranscriptionJob(data as TranscriptionJobPayload);
   });

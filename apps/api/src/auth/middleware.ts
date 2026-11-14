@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { appOrigin, config } from '../config.js';
 import { AppError } from '../errors.js';
 import { sessionCookie, readSession, type AuthContext } from './sessions.js';
+import { requireStaff } from '../modules/access/control.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -25,9 +26,9 @@ export async function attachSession(req: Request, _res: Response, next: NextFunc
   }
 }
 
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   if (!req.auth) return next(new AppError('AUTH_REQUIRED'));
-  next();
+  try { await requireStaff(req); next(); } catch (error) { next(error); }
 }
 
 export function requireSameOrigin(req: Request, _res: Response, next: NextFunction): void {

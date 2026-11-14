@@ -3,7 +3,7 @@ services:
     image: mongo:7
     command: ['--replSet', 'rs0', '--bind_ip_all', '--port', '27017']
     ports:
-      - '27017:27017'
+      - '127.0.0.1:27017:27017'
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -25,14 +25,14 @@ services:
       - --eval
       - |
         try { rs.status() } catch (error) {
-          rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] })
+          rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] })
         }
 
   redis:
     image: redis:7-alpine
     command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     volumes:
       - redis-data:/data
     healthcheck:
@@ -54,6 +54,7 @@ services:
       - minio-data:/data
 
   api:
+    profiles: ['container-api']
     build: .
     depends_on:
       mongo:
@@ -64,7 +65,7 @@ services:
       NODE_ENV: development
       PORT: '3000'
       APP_URL: http://localhost:3000
-      MONGODB_URI: mongodb://mongo:27017/understood?replicaSet=rs0
+      MONGODB_URI: mongodb://mongo:27017/understood?replicaSet=rs0&directConnection=true
       REDIS_URL: redis://redis:6379
       PROCESS_ROLE: both
       MEDIA_DRIVER: local
@@ -73,7 +74,7 @@ services:
       EMAIL_DRIVER: console
       PIPELINE_ALL_LANGUAGES: 'true'
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     volumes:
       - api-media:/data/media
 

@@ -5,7 +5,7 @@ import { z } from 'zod';
 const bool = (defaultValue: 'true' | 'false') =>
   z.enum(['true', 'false']).default(defaultValue).transform((value) => value === 'true');
 
-const envSchema = z
+export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -17,6 +17,10 @@ const envSchema = z
 
     TOKEN_PEPPER: z.string().min(16).default('dev-pepper-change-me-0123456789'),
     TOKEN_ENC_KEY: z.string().optional(),
+    PLATFORM_OPERATOR_TOKEN: z.string().min(32).optional(),
+    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_SUBJECT: z.string().optional(),
 
     MEDIA_DRIVER: z.enum(['local', 'r2']).default('local'),
     MEDIA_LOCAL_DIR: z.string().min(1).default('.data/media'),
@@ -47,12 +51,24 @@ const envSchema = z
     if (env.NODE_ENV === 'production') {
       if (!env.REDIS_URL) ctx.addIssue({ code: 'custom', path: ['REDIS_URL'], message: 'required in production' });
       if (!env.TOKEN_ENC_KEY) ctx.addIssue({ code: 'custom', path: ['TOKEN_ENC_KEY'], message: 'required in production' });
+      if (env.TOKEN_PEPPER.length < 32 || env.TOKEN_PEPPER.startsWith('dev-') || /change.?me|replace/i.test(env.TOKEN_PEPPER)) {
+        ctx.addIssue({ code: 'custom', path: ['TOKEN_PEPPER'], message: 'must be a random production secret of at least 32 characters' });
+      }
       if (!env.APP_URL.startsWith('https://')) {
         ctx.addIssue({ code: 'custom', path: ['APP_URL'], message: 'must be https in production' });
       }
-      if (env.AI_DRIVER === 'live' && !env.GROQ_API_KEY) {
-        ctx.addIssue({ code: 'custom', path: ['GROQ_API_KEY'], message: 'required when AI_DRIVER=live' });
+    }
+    if (env.TOKEN_ENC_KEY && (Buffer.from(env.TOKEN_ENC_KEY, 'base64').length !== 32 || !/^[A-Za-z0-9+/]{43}=$/.test(env.TOKEN_ENC_KEY))) {
+      ctx.addIssue({ code: 'custom', path: ['TOKEN_ENC_KEY'], message: 'must be a base64-encoded 32-byte key' });
+    }
+    if (env.AI_DRIVER === 'live') {
+      for (const key of ['GROQ_API_KEY', 'AZURE_SPEECH_KEY', 'AZURE_SPEECH_REGION'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required when AI_DRIVER=live' });
       }
+    }
+    const pushKeys = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'] as const;
+    if (pushKeys.some((key) => env[key]) && !pushKeys.every((key) => env[key])) {
+      ctx.addIssue({ code: 'custom', path: ['VAPID_PUBLIC_KEY'], message: 'all three VAPID settings are required to enable push' });
     }
     if (env.MEDIA_DRIVER === 'r2') {
       for (const key of ['R2_ENDPOINT', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'] as const) {

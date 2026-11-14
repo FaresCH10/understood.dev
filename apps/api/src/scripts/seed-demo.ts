@@ -1,172 +1,32 @@
 import { connectMongo, disconnectMongo } from '../db.js';
-import { config } from '../config.js';
-import { Crew, Delivery, Instruction, Organization, User, Variant, Worker, MagicLink } from '../models.js';
-import { computeDisplayNames, LANGUAGES, type Language } from '@understood/shared';
-import { encryptedSecret, randomToken, tokenHash } from '../auth/tokens.js';
-import { normalizeWorkerName } from '../domain/names.js';
+import { config, isProduction } from '../config.js';
+import { Crew, Organization, User, Worker } from '../models.js';
+import { Site } from '../modules/access/models.js';
+import { hashPassword } from '../auth/passwords.js';
+import { Operation } from '../modules/operations/models.js';
+import { prepareVariant, publishOperation } from '../modules/operations/service.js';
+import type { Language } from '@understood/shared';
 
-const CONTENT: Record<Language, { title: string; text: string; question: string; options: [string, string, string] }> = {
-  en: {
-    title: 'Roof safety check before work',
-    text: 'Before starting today, check the roof edge for loose tiles and report any damage to your supervisor. Wear your harness whenever you are above ground level.',
-    question: 'What should you do if you see loose tiles?',
-    options: ['Report them to the supervisor', 'Ignore them', 'Throw them away'],
-  },
-  ar: {
-    title: 'فحص سلامة السطح قبل العمل',
-    text: 'قبل البدء اليوم، افحص حافة السطح بحثًا عن البلاطات المتراخية وأبلغ المشرف عن أي تلف. ارتدِ حزام الأمان كلما كنت فوق مستوى الأرض.',
-    question: 'ماذا يجب أن تفعل إذا رأيت بلاطات متراخية؟',
-    options: ['أبلغ المشرف عنها', 'تجاهلها', 'ارمِها بعيدًا'],
-  },
-  hi: {
-    title: 'काम से पहले छत की सुरक्षा जाँच',
-    text: 'आज काम शुरू करने से पहले छत के किनारे पर ढीली टाइलें जाँचें और किसी भी नुकसान की सूचना अपने सुपरवाइज़र को दें। ज़मीन से ऊपर होने पर हमेशा अपना हार्नेस पहनें।',
-    question: 'ढीली टाइलें दिखने पर आपको क्या करना चाहिए?',
-    options: ['सुपरवाइज़र को बताएं', 'अनदेखा करें', 'फेंक दें'],
-  },
-  ur: {
-    title: 'کام سے پہلے چھت کی حفاظتی جانچ',
-    text: 'آج کام شروع کرنے سے پہلے چھت کے کنارے پر ڈھیلی ٹائلیں چیک کریں اور کسی بھی نقصان کی اطلاع اپنے سپروائزر کو دیں۔ زمین سے اوپر ہونے پر ہمیشہ اپنا ہارنس پہنیں۔',
-    question: 'ڈھیلی ٹائلیں نظر آنے پر آپ کو کیا کرنا چاہیے؟',
-    options: ['سپروائز کو بتائیں', 'نظر انداز کریں', 'پھینک دیں'],
-  },
-  ml: {
-    title: 'ജോലിക്ക് മുമ്പ് മേൽക്കൂര സുരക്ഷാ പരിശോധന',
-    text: 'ഇന്ന് ജോലി തുടങ്ങുന്നതിന് മുമ്പ് മേൽക്കൂരയുടെ അരികിൽ അയഞ്ഞ ടൈലുകൾ പരിശോധിക്കുകയും കേടുപാടുകൾ സൂപ്പർവൈസറെ അറിയിക്കുകയും ചെയ്യുക. നിലത്തിന് മുകളിൽ ആകുമ്പോൾ എപ്പോഴും ഹാർനസ് ധരിക്കുക.',
-    question: 'അയഞ്ഞ ടൈലുകൾ കണ്ടാൽ എന്ത് ചെയ്യണം?',
-    options: ['സൂപ്പർവൈസറെ അറിയിക്കുക', 'അവഗണിക്കുക', 'എറിഞ്ഞുകളയുക'],
-  },
-  bn: {
-    title: 'কাজের আগে ছাদের নিরাপত্তা পরীক্ষা',
-    text: 'আজ কাজ শুরু করার আগে ছাদের প্রান্তে আলগা টাইলস পরীক্ষা করুন এবং কোনো ক্ষতির বিষয়ে আপনার সুপারভাইজারকে জানান। মাটির উপরে থাকলে সর্বদা আপনার হার্নেস পরুন।',
-    question: 'আলগা টাইলস দেখলে আপনার কী করা উচিত?',
-    options: ['সুপারভাইজারকে জানান', 'উপেক্ষা করুন', 'ফেলে দিন'],
-  },
-};
-
-const DEMO_WORKERS: Array<{ name: string; language: Language }> = [
-  { name: 'Ramesh Kumar', language: 'ml' },
-  { name: 'Muhammad Ali', language: 'ur' },
-  { name: 'Suresh Patel', language: 'hi' },
-  { name: 'Abdul Rahman', language: 'ar' },
-  { name: 'Rahim Uddin', language: 'bn' },
-  { name: 'Ramesh Nair', language: 'ml' },
-];
-
-async function main(): Promise<void> {
+async function main(){
+  if(isProduction||!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:|\/)/.test(config.MONGODB_URI))throw new Error('Demo seeding is restricted to a local development database.');
   await connectMongo();
-
-  const org = await Organization.findOneAndUpdate(
-    { name: 'Demo Contracting' },
-    { $setOnInsert: { name: 'Demo Contracting', timezone: 'Asia/Dubai', locale: 'en', plan: 'pilot' } },
-    { upsert: true, new: true },
-  );
-
-  const user = await User.findOneAndUpdate(
-    { email: 'owner@demo.understood.local' },
-    { $setOnInsert: { orgId: org._id, email: 'owner@demo.understood.local', name: 'Demo Owner', role: 'owner' } },
-    { upsert: true, new: true },
-  );
-
-  const crew = await Crew.findOneAndUpdate(
-    { orgId: org._id, name: 'Morning Crew' },
-    { $setOnInsert: { orgId: org._id, name: 'Morning Crew' } },
-    { upsert: true, new: true },
-  );
-
-  const workers = [];
-  for (const entry of DEMO_WORKERS) {
-    const worker = await Worker.findOneAndUpdate(
-      { orgId: org._id, normalizedName: normalizeWorkerName(entry.name), crewId: crew._id },
-      {
-        $setOnInsert: {
-          orgId: org._id,
-          crewId: crew._id,
-          name: entry.name,
-          normalizedName: normalizeWorkerName(entry.name),
-          language: entry.language,
-        },
-      },
-      { upsert: true, new: true },
-    );
-    workers.push(worker);
+  const password=process.env.DEMO_PASSWORD??'Understood-demo-2026!';
+  const passwordHash=await hashPassword(password);
+  const org=await Organization.findOneAndUpdate({companyId:'understood-demo'},{$setOnInsert:{name:'Understood demo',companyId:'understood-demo',timezone:'Asia/Dubai',locale:'en',plan:'pilot',accessStatus:'active',subscription:'pilot',activatedAt:new Date(),expiresAt:new Date(Date.now()+30*86400000)}},{upsert:true,new:true});
+  const site=await Site.findOneAndUpdate({orgId:org._id,name:'Demo warehouse'},{$setOnInsert:{timezone:'Asia/Dubai'}},{upsert:true,new:true});
+  const owner=await User.findOneAndUpdate({email:'owner@demo.understood.local'},{$set:{orgId:org._id,name:'Demo owner',role:'owner',siteIds:[site._id],emailVerifiedAt:new Date(),passwordHash}},{upsert:true,new:true});
+  const crew=await Crew.findOneAndUpdate({orgId:org._id,name:'Morning crew'},{$set:{siteId:site._id}},{upsert:true,new:true});
+  const entries:Array<{name:string;workerId:string;language:Language}>=[{name:'Asha',workerId:'W001',language:'en'},{name:'Omar',workerId:'W002',language:'ar'},{name:'Priya',workerId:'W003',language:'hi'}];
+  for(const entry of entries){await Worker.findOneAndUpdate({orgId:org._id,workerId:entry.workerId},{$set:{...entry,normalizedName:entry.name.toLowerCase(),siteId:site._id,crewId:crew._id,passwordHash,languageSelected:true,accessDisabled:false,archivedAt:null}},{upsert:true,new:true});}
+  if(!await Operation.exists({orgId:org._id})){
+    const title='Move the blue boxes';const text='Move the blue boxes to bay 4 before lunch.';
+    const question={text:'Where do the blue boxes go?',options:['Bay 4','Bay 1','Bay 2'],correctIndex:0};
+    const variants=[];
+    for(const language of entries.map(e=>e.language)){variants.push({...await prepareVariant({orgId:String(org._id),text,sourceLanguage:'en',language,deliveryMode:'text',questionEnabled:true,question}),reviewed:true});}
+    const instruction=await Operation.create({orgId:org._id,siteId:site._id,createdBy:owner._id,title,text,sourceLanguage:'en',deliveryMode:'text',questionEnabled:true,question,crewIds:[crew._id],workerIds:[],everyone:false,status:'ready',variants});
+    await publishOperation(String(instruction._id),String(owner._id));
   }
-
-  const shareToken = randomToken(32);
-  const instruction = await Instruction.create({
-    orgId: org._id,
-    crewId: crew._id,
-    audienceWorkerIds: workers.map((worker) => worker._id),
-    title: CONTENT.en.title,
-    type: 'task',
-    content: { kind: 'text', text: CONTENT.en.text },
-    sourceLanguage: 'en',
-    status: 'shared',
-    generation: 1,
-    createdBy: user._id,
-    sharedBy: user._id,
-    sharedAt: new Date(),
-    shareTokenHash: tokenHash(shareToken),
-    shareTokenEnc: encryptedSecret(shareToken),
-    shareTokenIssuedAt: new Date(),
-    pipeline: { startedAt: new Date(), finishedAt: new Date(), lastError: null },
-  });
-
-  for (const language of LANGUAGES) {
-    const content = CONTENT[language];
-    const variant = await Variant.create({
-      orgId: org._id,
-      instructionId: instruction._id,
-      language,
-      title: content.title,
-      text: content.text,
-      audioStatus: 'skipped',
-      question: { text: content.question, options: content.options, correctIndex: 0, source: 'manual' },
-      questionStatus: 'ready',
-      status: 'text_only',
-      stages: { translate: 'done', question: 'done', audio: 'done' },
-      revision: 1,
-    });
-    const audience = workers.filter((worker) => worker.language === language);
-    await Delivery.insertMany(
-      audience.map((worker) => ({
-        orgId: org._id,
-        instructionId: instruction._id,
-        workerId: worker._id,
-        variantId: variant._id,
-        language,
-        status: 'pending',
-        attempts: [],
-        deliveryTokens: [],
-        help: { requested: false, reason: null, requestedAt: null, resolvedAt: null, resolvedBy: null },
-        channel: 'link',
-      })),
-    );
-  }
-
-  const names = computeDisplayNames(workers.map((worker) => ({ id: String(worker._id), name: worker.name, language: worker.language })));
-  const magicToken = randomToken(32);
-  await MagicLink.create({
-    email: user.email,
-    tokenHash: tokenHash(magicToken),
-    expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-  });
-
-  process.stdout.write(
-    [
-      'Demo data ready.',
-      `Sign in: ${config.APP_URL}/api/v1/auth/verify?token=${magicToken}`,
-      `Worker link: ${config.APP_URL}/i/${shareToken}`,
-      `Working crew: ${crew.name} (${workers.length} workers)`,
-      ...names.map((entry) => `  - ${entry.displayName}`),
-      '',
-    ].join('\n'),
-  );
-
+  console.log(`Demo ready. ${config.APP_URL}/signin\nStaff: owner@demo.understood.local\nPassword: ${password}\nWorker link: ${config.APP_URL}/i/\nCompany: understood-demo\nWorkers: W001 (English), W002 (Arabic), W003 (Hindi)\nWorker password: ${password}\nDemo translations are visibly labeled untranslated examples.`);
   await disconnectMongo();
 }
-
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
-  process.exit(1);
-});
+main().catch(error=>{console.error(error instanceof Error?error.message:String(error));process.exit(1);});

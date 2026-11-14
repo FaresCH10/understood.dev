@@ -60,7 +60,10 @@ export async function readSession(token: string): Promise<{ auth: AuthContext; d
   const lastSeen = new Date(data.lastSeenAt).getTime();
   if (Date.now() - lastSeen > REFRESH_INTERVAL_MS) {
     data.lastSeenAt = new Date().toISOString();
-    void kv.set(sessionKey(hash), JSON.stringify(data), SESSION_TTL_SECONDS);
+    await Promise.all([
+      kv.set(sessionKey(hash), JSON.stringify(data), SESSION_TTL_SECONDS),
+      kv.sadd(`us:${data.userId}`, hash, SESSION_TTL_SECONDS),
+    ]);
   }
 
   return {

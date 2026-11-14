@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { Types } from 'mongoose';
 import { exportQuerySchema } from '@understood/shared';
 import { asyncHandler, parseQuery, routeParam } from '../../http.js';
@@ -239,7 +239,7 @@ exportsRouter.get(
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="understood_export_${dateStamp()}.zip"`);
 
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     archive.on('error', (error) => {
       if (!res.headersSent) {
         res.status(500).json({ error: { code: 'INTERNAL', message: 'Export failed.' } });

@@ -1,4 +1,5 @@
 import { Schema, model, type Types } from 'mongoose';
+import { LANGUAGES } from '@understood/shared';
 import type {
   ContentKind,
   DeliveryStatus,
@@ -17,6 +18,13 @@ import type {
 export interface OrganizationDoc {
   _id: Types.ObjectId;
   name: string;
+  companyId?: string;
+  accessStatus?: 'pending' | 'active' | 'suspended';
+  subscription?: 'pilot' | 'paid';
+  activatedAt?: Date | null;
+  expiresAt?: Date | null;
+  workerLimit?: number;
+  siteLimit?: number;
   timezone: string;
   locale: Locale;
   plan: Plan;
@@ -29,6 +37,13 @@ export interface OrganizationDoc {
 const organizationSchema = new Schema<OrganizationDoc>(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
+    companyId: { type: String, lowercase: true, trim: true },
+    accessStatus: { type: String, enum: ['pending', 'active', 'suspended'], default: 'pending' },
+    subscription: { type: String, enum: ['pilot', 'paid'], default: 'pilot' },
+    activatedAt: { type: Date, default: null },
+    expiresAt: { type: Date, default: null },
+    workerLimit: { type: Number, default: 25 },
+    siteLimit: { type: Number, default: 1 },
     timezone: { type: String, required: true, default: 'Asia/Dubai' },
     locale: { type: String, enum: ['en', 'ar'], required: true, default: 'en' },
     plan: { type: String, enum: ['pilot'], required: true, default: 'pilot' },
@@ -37,13 +52,20 @@ const organizationSchema = new Schema<OrganizationDoc>(
   },
   { timestamps: true, collection: 'organizations' },
 );
+organizationSchema.index({ companyId: 1 }, { unique: true, partialFilterExpression: { companyId: { $type: 'string' } } });
+
+export type StaffRole = 'owner' | 'supervisor' | 'administrator' | 'auditor';
 
 export interface UserDoc {
   _id: Types.ObjectId;
   orgId: Types.ObjectId;
   email: string;
   name?: string;
-  role: Role;
+  role: StaffRole;
+  passwordHash?: string;
+  emailVerifiedAt?: Date | null;
+  disabledAt?: Date | null;
+  siteIds: Types.ObjectId[];
   lastLoginAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -54,7 +76,11 @@ const userSchema = new Schema<UserDoc>(
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     email: { type: String, required: true, lowercase: true, trim: true },
     name: { type: String, maxlength: 80 },
-    role: { type: String, enum: ['owner'], required: true, default: 'owner' },
+    role: { type: String, enum: ['owner', 'supervisor', 'administrator', 'auditor'], required: true, default: 'owner' },
+    passwordHash: { type: String, select: false },
+    emailVerifiedAt: { type: Date, default: null },
+    disabledAt: { type: Date, default: null },
+    siteIds: { type: [Schema.Types.ObjectId], default: [] },
     lastLoginAt: { type: Date },
   },
   { timestamps: true, collection: 'users' },
@@ -86,6 +112,7 @@ magicLinkSchema.index({ tokenHash: 1 });
 export interface CrewDoc {
   _id: Types.ObjectId;
   orgId: Types.ObjectId;
+  siteId?: Types.ObjectId | null;
   name: string;
   archivedAt?: Date | null;
   createdAt: Date;
@@ -95,6 +122,7 @@ export interface CrewDoc {
 const crewSchema = new Schema<CrewDoc>(
   {
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
+    siteId: { type: Schema.Types.ObjectId, default: null },
     name: { type: String, required: true, trim: true, maxlength: 80 },
     archivedAt: { type: Date, default: null },
   },
@@ -106,6 +134,12 @@ export interface WorkerDoc {
   _id: Types.ObjectId;
   orgId: Types.ObjectId;
   crewId: Types.ObjectId;
+  siteId?: Types.ObjectId | null;
+  workerId?: string;
+  passwordHash?: string;
+  accessDisabled?: boolean;
+  languageSelected?: boolean;
+  requestedLanguage?: Language | null;
   name: string;
   normalizedName: string;
   language: Language;
@@ -121,9 +155,15 @@ const workerSchema = new Schema<WorkerDoc>(
   {
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     crewId: { type: Schema.Types.ObjectId, ref: 'Crew', required: true },
+    siteId: { type: Schema.Types.ObjectId, default: null },
+    workerId: { type: String, trim: true, uppercase: true },
+    passwordHash: { type: String, select: false },
+    accessDisabled: { type: Boolean, default: false },
+    languageSelected: { type: Boolean, default: false },
+    requestedLanguage: { type: String, enum: LANGUAGES, default: null },
     name: { type: String, required: true, trim: true, maxlength: 80 },
     normalizedName: { type: String, required: true },
-    language: { type: String, enum: ['ar', 'en', 'hi', 'ur', 'ml', 'bn'], required: true },
+    language: { type: String, enum: LANGUAGES, required: true },
     phoneE164: { type: String, default: null },
     archivedAt: { type: Date, default: null },
     personalTokenHash: { type: String, default: null },
@@ -133,6 +173,7 @@ const workerSchema = new Schema<WorkerDoc>(
 );
 workerSchema.index({ orgId: 1, crewId: 1, archivedAt: 1 });
 workerSchema.index({ orgId: 1, normalizedName: 1 });
+workerSchema.index({ orgId: 1, workerId: 1 }, { unique: true, partialFilterExpression: { workerId: { $type: 'string' } } });
 
 export interface InstructionContent {
   kind?: ContentKind;
@@ -186,7 +227,7 @@ const contentSchema = new Schema<InstructionContent>(
     photoKey: { type: String, default: null },
     transcript: { type: String, maxlength: 4000, default: null },
     transcriptStatus: { type: String, enum: ['pending', 'ready', 'failed', 'confirmed'] },
-    detectedSourceLanguage: { type: String, enum: ['ar', 'en', 'hi', 'ur', 'ml', 'bn'], default: null },
+    detectedSourceLanguage: { type: String, enum: LANGUAGES, default: null },
   },
   { _id: false },
 );
@@ -214,7 +255,7 @@ const instructionSchema = new Schema<InstructionDoc>(
     title: { type: String, maxlength: 120, default: null },
     type: { type: String, enum: ['task', 'info'], required: true, default: 'task' },
     content: { type: contentSchema, default: () => ({}) },
-    sourceLanguage: { type: String, enum: ['ar', 'en', 'hi', 'ur', 'ml', 'bn'], required: true, default: 'en' },
+    sourceLanguage: { type: String, enum: LANGUAGES, required: true, default: 'en' },
     status: {
       type: String,
       enum: ['draft', 'processing', 'partial_failure', 'ready', 'shared', 'archived'],
@@ -286,7 +327,7 @@ const variantSchema = new Schema<VariantDoc>(
   {
     orgId: { type: Schema.Types.ObjectId, required: true },
     instructionId: { type: Schema.Types.ObjectId, ref: 'Instruction', required: true },
-    language: { type: String, enum: ['ar', 'en', 'hi', 'ur', 'ml', 'bn'], required: true },
+    language: { type: String, enum: LANGUAGES, required: true },
     title: { type: String, maxlength: 120, default: null },
     text: { type: String, maxlength: 2000, default: null },
     audioKey: { type: String, default: null },
@@ -366,7 +407,7 @@ const deliverySchema = new Schema<DeliveryDoc>(
     instructionId: { type: Schema.Types.ObjectId, ref: 'Instruction', required: true },
     workerId: { type: Schema.Types.ObjectId, ref: 'Worker', required: true },
     variantId: { type: Schema.Types.ObjectId, ref: 'Variant', required: true },
-    language: { type: String, enum: ['ar', 'en', 'hi', 'ur', 'ml', 'bn'], required: true },
+    language: { type: String, enum: LANGUAGES, required: true },
     languageChangeHistory: {
       type: [new Schema({ from: String, to: String, at: Date }, { _id: false })],
       default: [],
@@ -451,7 +492,7 @@ const aiUsageSchema = new Schema<AiUsageDoc>(
   {
     orgId: { type: Schema.Types.ObjectId, required: true },
     instructionId: { type: Schema.Types.ObjectId, default: null },
-    language: { type: String, enum: ['ar', 'en', 'hi', 'ur', 'ml', 'bn'], default: null },
+    language: { type: String, enum: LANGUAGES, default: null },
     stage: { type: String, enum: ['transcribe', 'translate', 'question', 'tts'], required: true },
     provider: { type: String, required: true },
     model: { type: String, default: null },

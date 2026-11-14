@@ -121,7 +121,7 @@ export function PreviewPage({ token }: { token: string }) {
               {content.question.options.map((option, index) => (
                 <button key={index} className="q-option" type="button" disabled>
                   <span className="letter" aria-hidden="true">
-                    {LETTERS[language][index] ?? LETTERS[language][0]}
+                    {(LETTERS[language] ?? LETTERS.en!)[index] ?? 'A'}
                   </span>
                   <span className={FONT_CLASS[language]} lang={language}>
                     {option}
@@ -135,3 +135,4 @@ export function PreviewPage({ token }: { token: string }) {
     </div>
   );
 }
+

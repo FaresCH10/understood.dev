@@ -6,6 +6,7 @@ process.env.MEDIA_LOCAL_DIR = '.data/test-media';
 process.env.AI_DRIVER = 'mock';
 process.env.EMAIL_DRIVER = 'console';
 process.env.RATE_LIMIT_ENABLED = 'false';
-process.env.PIPELINE_ALL_LANGUAGES = 'true';
+// Exercise the recipients' language set rather than generating unrelated locales.
+process.env.PIPELINE_ALL_LANGUAGES = 'false';
 process.env.HELP_BATCH_SECONDS = '1';
 process.env.TZ = 'UTC';

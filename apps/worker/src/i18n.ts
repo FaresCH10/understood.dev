@@ -1,4 +1,4 @@
-import { LANGUAGE_META, type Language } from '@understood/shared';
+import { LANGUAGE_META, LANGUAGES, type Language } from '@understood/shared';
 
 export interface WorkerStrings {
   selectName: string;
@@ -46,7 +46,7 @@ export interface WorkerStrings {
   noMatch: string;
 }
 
-export const STRINGS: Record<Language, WorkerStrings> = {
+export const STRINGS: Partial<Record<Language, WorkerStrings>> = {
   en: {
     selectName: 'Select your name',
     search: 'Search your name',
@@ -324,9 +324,9 @@ export const STRINGS: Record<Language, WorkerStrings> = {
   },
 };
 
-export const LANG_ORDER: Language[] = ['ar', 'en', 'hi', 'ur', 'ml', 'bn'];
+export const LANG_ORDER: Language[] = [...LANGUAGES];
 
-export const LETTERS: Record<Language, [string, string, string]> = {
+export const LETTERS: Partial<Record<Language, [string, string, string]>> = {
   ar: ['أ', 'ب', 'ج'],
   en: ['A', 'B', 'C'],
   hi: ['अ', 'ब', 'स'],
@@ -335,7 +335,7 @@ export const LETTERS: Record<Language, [string, string, string]> = {
   bn: ['ক', 'খ', 'গ'],
 };
 
-export const FONT_CLASS: Record<Language, string> = {
+export const FONT_CLASS: Partial<Record<Language, string>> = {
   ar: 'lang-ar',
   en: '',
   hi: 'lang-hi',
@@ -349,9 +349,11 @@ export function metaOf(lang: Language) {
 }
 
 export function t(lang: Language): WorkerStrings {
-  return STRINGS[lang];
+  return STRINGS[lang] ?? STRINGS.en!;
 }
 
 export function isLanguage(value: string | null | undefined): value is Language {
   return !!value && (LANG_ORDER as string[]).includes(value);
 }
+
+

@@ -5,11 +5,14 @@ services:
     env_file: .env.production
     environment:
       PROCESS_ROLE: api
+      MEDIA_LOCAL_DIR: /data/media
     depends_on:
       redis:
         condition: service_healthy
     expose:
       - '3000'
+    volumes:
+      - media-data:/data/media
 
   pipeline:
     image: ${IMAGE:-ghcr.io/understood/app:latest}
@@ -17,9 +20,12 @@ services:
     env_file: .env.production
     environment:
       PROCESS_ROLE: worker
+      MEDIA_LOCAL_DIR: /data/media
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - media-data:/data/media
 
   redis:
     image: redis:7-alpine
@@ -43,8 +49,8 @@ services:
       DOMAIN: ${DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./static/supervisor:/srv/supervisor:ro
-      - ./static/worker:/srv/worker:ro
+      - ./releases/${RELEASE_SHA:-current}/supervisor:/srv/supervisor:ro
+      - ./releases/${RELEASE_SHA:-current}/worker:/srv/worker:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
@@ -54,3 +60,4 @@ volumes:
   redis-data:
   caddy-data:
   caddy-config:
+  media-data:

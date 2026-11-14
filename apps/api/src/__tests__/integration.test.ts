@@ -33,9 +33,13 @@ async function waitForInstructionStatus(id: string, wanted: string[], timeoutMs 
 }
 
 beforeAll(async () => {
-  const { MongoMemoryReplSet } = await import('mongodb-memory-server');
-  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
-  await mongoose.connect(replSet.getUri(), { dbName: 'understood-test', autoIndex: true });
+  let uri = process.env.TEST_MONGODB_URI;
+  if (!uri) {
+    const { MongoMemoryReplSet } = await import('mongodb-memory-server');
+    replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
+    uri = replSet.getUri();
+  }
+  await mongoose.connect(uri, { dbName: `understood-test-${randomUUID()}`, autoIndex: true });
 
   const { registerPipelineJobs } = await import('../jobs/register.js');
   registerPipelineJobs();
@@ -62,6 +66,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
+  if (mongoose.connection.readyState === 1) await mongoose.connection.dropDatabase();
   await mongoose.disconnect();
   await replSet?.stop();
 });

@@ -1,0 +1,2 @@
+self.addEventListener('push',event=>{let data={};try{data=event.data.json();}catch{}event.waitUntil(self.registration.showNotification(data.title||'Understood',{body:data.body||'You have a new update.',icon:'/icon.svg',data:{url:data.url||'/'},tag:data.tag||'understood-staff-update'}));});
+self.addEventListener('notificationclick',event=>{event.notification.close();const url=new URL(event.notification.data?.url||'/',self.location.origin);event.waitUntil(clients.openWindow(url.origin===self.location.origin?url.href:'/'));});

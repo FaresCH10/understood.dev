@@ -3,13 +3,14 @@ import Redis from 'ioredis';
 import { config, isTest } from '../config.js';
 import { logger } from '../logger.js';
 
-export type JobName = 'transcribe' | 'variant' | 'help_alert' | 'cleanup';
+export type JobName = 'transcribe' | 'variant' | 'help_alert' | 'cleanup' | 'operation';
 
 export interface JobPayloads {
   transcribe: { instructionId: string; orgId: string; audioKey: string };
   variant: { instructionId: string; orgId: string; language: string; generation: number; revision: number };
   help_alert: { orgId: string; instructionId: string };
   cleanup: { orgId: string };
+  operation: { instructionId: string; generation: number };
 }
 
 export type JobHandler = (name: JobName, data: unknown) => Promise<void>;
@@ -21,11 +22,13 @@ export function registerJobHandler(name: JobName, handler: JobHandler): void {
 }
 
 type QueueAdapter = {
+  ready(): Promise<void>;
   enqueue(name: JobName, data: JobPayloads[JobName], options?: JobsOptions): Promise<void>;
   close(): Promise<void>;
 };
 
 class InlineQueue implements QueueAdapter {
+  async ready(): Promise<void> {}
   async enqueue(name: JobName, data: unknown, options?: JobsOptions): Promise<void> {
     const handler = handlers.get(name);
     if (!handler) {
@@ -43,16 +46,18 @@ class InlineQueue implements QueueAdapter {
   async close(): Promise<void> {}
 }
 
-class BullQueue implements QueueAdapter {
+export class BullQueue implements QueueAdapter {
   private queue: Queue;
   private worker: Worker | null = null;
+  private connection: Redis;
 
-  constructor(url: string) {
+  constructor(url: string, role = config.PROCESS_ROLE, name = 'pipeline') {
     const connection = new Redis(url, { maxRetriesPerRequest: null });
-    this.queue = new Queue('pipeline', { connection });
-    if (config.PROCESS_ROLE === 'worker' || config.PROCESS_ROLE === 'both') {
+    this.connection = connection;
+    this.queue = new Queue(name, { connection });
+    if (role === 'worker' || role === 'both') {
       this.worker = new Worker(
-        'pipeline',
+        name,
         async (job) => {
           const handler = handlers.get(job.name as JobName);
           if (!handler) throw new Error(`no handler for ${job.name}`);
@@ -70,7 +75,13 @@ class BullQueue implements QueueAdapter {
       this.worker.on('failed', (job, error) => {
         logger.error({ job: job?.name, id: job?.id, err: error.message }, 'job failed');
       });
+      this.worker.on('error', (error) => logger.error({ err: error.message }, 'queue worker error'));
     }
+  }
+
+  async ready(): Promise<void> {
+    await this.queue.waitUntilReady();
+    await this.worker?.waitUntilReady();
   }
 
   async enqueue(name: JobName, data: unknown, options?: JobsOptions): Promise<void> {
@@ -86,6 +97,7 @@ class BullQueue implements QueueAdapter {
   async close(): Promise<void> {
     await this.worker?.close();
     await this.queue.close();
+    await this.connection.quit();
   }
 }
 

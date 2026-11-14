@@ -9,19 +9,24 @@ concurrency:
   group: production
   cancel-in-progress: false
 
-env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
-
 jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
   image:
-    name: Build API image (arm64)
+    name: Build verified image
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.image-name.outputs.name }}:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+      - id: image-name
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -32,16 +37,14 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.image-name.outputs.name }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy to pilot VM
+    name: Deploy verified release
     needs: image
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -50,64 +53,79 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
-      - name: Build supervisor and worker SPAs
-        run: |
-          npm run build --workspace @understood/supervisor
-          npm run build --workspace @understood/worker
-
-      - name: Upload supervisor bundle
+        env:
+          MONGOMS_DISABLE_POSTINSTALL: 'true'
+      - run: npm run build --workspace @understood/supervisor && npm run build --workspace @understood/worker
+      - name: Upload immutable supervisor bundle
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: apps/supervisor/dist/*
-          target: ${{ secrets.DEPLOY_PATH }}/static/supervisor
+          target: ${{ secrets.DEPLOY_PATH }}/releases/${{ github.sha }}/supervisor
           strip_components: 3
-          overwrite: true
-          rm: true
-
-      - name: Upload worker bundle
+      - name: Upload immutable worker bundle
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: apps/worker/dist/*
-          target: ${{ secrets.DEPLOY_PATH }}/static/worker
+          target: ${{ secrets.DEPLOY_PATH }}/releases/${{ github.sha }}/worker
           strip_components: 3
-          overwrite: true
-          rm: true
-
-      - name: Pull image and restart
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          IMAGE: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
+      - name: Upload deployment configuration
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: IMAGE,GHCR_READ_TOKEN,GHCR_USER
+          source: compose.prod.yml,Caddyfile
+          target: ${{ secrets.DEPLOY_PATH }}
+          overwrite: true
+      - name: Provision indexes and switch release
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+          RELEASE_SHA: ${{ github.sha }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: IMAGE,RELEASE_SHA,GHCR_READ_TOKEN,GHCR_USER,DEPLOY_PATH,DOMAIN
           script_stop: true
           script: |
-            set -euo pipefail
-            cd "${{ secrets.DEPLOY_PATH }}"
+            set -eu
+            cd "$DEPLOY_PATH"
             echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             docker pull "$IMAGE"
-            IMAGE="$IMAGE" docker compose --env-file .env.production up -d --no-deps api pipeline caddy
-            docker image prune -f
-
-      - name: Smoke check
-        run: |
-          for i in $(seq 1 20); do
-            if curl -fsS "https://${{ secrets.DOMAIN }}/healthz" > /dev/null; then break; fi
-            if [ "$i" -eq 20 ]; then echo "healthz did not return 200"; exit 1; fi
-            sleep 3
-          done
-          curl -fsS "https://${{ secrets.DOMAIN }}/" > /dev/null
-          curl -fsS "https://${{ secrets.DOMAIN }}/i/" > /dev/null
+            printf 'IMAGE=%s\nRELEASE_SHA=%s\n' "$IMAGE" "$RELEASE_SHA" > next-release.env
+            chmod 600 next-release.env
+            # Shell variables override --env-file; clear these so rollback can select its own image and assets.
+            unset IMAGE RELEASE_SHA
+            docker compose -f compose.prod.yml --env-file .env.production --env-file next-release.env up -d redis
+            docker compose -f compose.prod.yml --env-file .env.production --env-file next-release.env run --rm --no-deps api node dist/ensure-indexes.js
+            if [ -f current-release.env ]; then cp current-release.env previous-release.env; fi
+            rollback() {
+              if [ -f previous-release.env ]; then
+                docker compose -f compose.prod.yml --env-file .env.production --env-file previous-release.env up -d --force-recreate api pipeline caddy
+                cp previous-release.env current-release.env
+              fi
+            }
+            if ! docker compose -f compose.prod.yml --env-file .env.production --env-file next-release.env up -d --force-recreate api pipeline caddy; then rollback; exit 1; fi
+            for i in $(seq 1 30); do
+              if curl -fsS "https://$DOMAIN/healthz" >/dev/null && curl -fsS "https://$DOMAIN/" >/dev/null && curl -fsS "https://$DOMAIN/i/" >/dev/null; then
+                cp next-release.env current-release.env
+                exit 0
+              fi
+              sleep 2
+            done
+            rollback
+            exit 1

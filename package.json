@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "engines": {
-    "node": ">=20.11"
+    "node": ">=24 <25"
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -15,6 +15,14 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "dev:api": "npm run dev --workspace @understood/api"
+    "dev:api": "npm run dev --workspace @understood/api",
+    "db:indexes": "npm run db:indexes --workspace @understood/api",
+    "test:unit": "npm run test --workspace @understood/api -- src/__tests__/unit.test.ts src/__tests__/runtime.test.ts",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "test:backup": "node --test scripts/backup.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
   }
 }

@@ -78,6 +78,7 @@ orgRouter.get(
             orgId: new Types.ObjectId(orgId),
             createdAt: { $gte: periodStart, $lt: periodEnd },
             unitType: 'chars',
+            stage: 'tts',
           },
         },
         { $group: { _id: null, chars: { $sum: '$units' } } },
@@ -116,7 +117,7 @@ orgRouter.post(
     await org.save();
 
     const { getQueue } = await import('../../jobs/queue.js');
-    await getQueue().enqueue('cleanup', { orgId: String(org._id) }, { jobId: `org-delete:${org._id}` });
+    await getQueue().enqueue('cleanup', { orgId: String(org._id) }, { jobId: `org-delete_${org._id}` });
     await afterWrite('org_delete_requested', String(org._id), String(req.auth!.userId));
 
     const { sendEmail } = await import('../../email/mailer.js');
