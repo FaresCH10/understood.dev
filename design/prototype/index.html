@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0F766E">
+  <title>Understood — Supervisor</title>
+  <meta name="description" content="Understood supervisor console — high-fidelity clickable prototype.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="supervisor.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <a class="brand" href="#home" aria-label="Understood home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="9" fill="#0F766E"/><path d="M9.5 20v-8M16 22V10M22.5 18v-4" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg>
+        </span>
+        <span class="brand-name">Understood</span>
+        <span class="brand-tag" data-i18n="brand.tag">Pilot</span>
+      </a>
+
+      <button class="org-switch" type="button" aria-label="Switch organization">
+        <span class="avatar avatar-org" aria-hidden="true">AN</span>
+        <span class="org-meta">
+          <strong>Al Noor Facilities</strong>
+          <span data-i18n="org.meta">Dubai · Pilot</span>
+        </span>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+
+      <nav class="nav" aria-label="Workspace">
+        <div class="nav-label" data-i18n="nav.label">Workspace</div>
+        <a href="#home" data-nav="home" data-i18n-aria="nav.home">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>
+          <span data-i18n="nav.home">Home</span>
+        </a>
+        <a href="#instructions" data-nav="instructions" data-i18n-aria="nav.instructions">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+          <span data-i18n="nav.instructions">Instructions</span>
+          <span class="nav-count" aria-hidden="true">2</span>
+        </a>
+        <a href="#crews" data-nav="crews" data-i18n-aria="nav.crews">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span data-i18n="nav.crews">Crews</span>
+        </a>
+        <a href="#settings" data-nav="settings" data-i18n-aria="nav.settings">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+          <span data-i18n="nav.settings">Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-note">
+        <div class="note-top">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/></svg>
+          <span data-i18n="sidebar.langs">6 worker languages</span>
+        </div>
+        <div class="lang-note-list" aria-hidden="true">
+          <span>العربية</span><span>English</span><span>हिन्दी</span><span>اردو</span><span>മലയാളം</span><span>বাংলা</span>
+        </div>
+      </div>
+
+      <div class="sidebar-foot">
+        <div class="lang-switch" role="group" aria-label="Interface language">
+          <button type="button" data-set-lang="en" class="is-active" aria-label="English interface">EN</button>
+          <button type="button" data-set-lang="ar" aria-label="واجهة عربية">ع</button>
+        </div>
+        <div class="user">
+          <span class="avatar" aria-hidden="true">YS</span>
+          <span class="user-meta">
+            <strong>Yusuf Saleh</strong>
+            <span data-i18n="sidebar.pilot">Pilot workspace</span>
+          </span>
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="crumbs" id="crumbs"><strong data-i18n="nav.home">Home</strong></div>
+        <div class="topbar-actions">
+          <span class="sync"><span class="pulse" aria-hidden="true"></span><span data-i18n="sync.live">Live</span></span>
+          <button class="icon-btn" type="button" data-action="notifications" aria-label="Notifications" data-i18n-aria="action.notifications">
+            <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          </button>
+          <button class="btn btn-primary" type="button" data-action="new-instruction">
+            <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            <span data-i18n="action.new">New instruction</span>
+          </button>
+        </div>
+      </header>
+      <main class="content">
+        <section class="view" id="view-root" aria-live="polite"></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" hidden></aside>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" hidden></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+  <noscript><p style="padding:24px;font-family:sans-serif">This prototype needs JavaScript enabled.</p></noscript>
+
+  <script src="data.js"></script>
+  <script src="i18n.js"></script>
+  <script src="supervisor.js"></script>
+</body>
+</html>

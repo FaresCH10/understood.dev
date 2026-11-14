@@ -1,0 +1,56 @@
+services:
+  api:
+    image: ${IMAGE:-ghcr.io/understood/app:latest}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      PROCESS_ROLE: api
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - '3000'
+
+  pipeline:
+    image: ${IMAGE:-ghcr.io/understood/app:latest}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      PROCESS_ROLE: worker
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./static/supervisor:/srv/supervisor:ro
+      - ./static/worker:/srv/worker:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:

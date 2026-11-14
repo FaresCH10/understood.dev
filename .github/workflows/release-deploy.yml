@@ -1,0 +1,113 @@
+name: Release & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    name: Build API image (arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to pilot VM
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build supervisor and worker SPAs
+        run: |
+          npm run build --workspace @understood/supervisor
+          npm run build --workspace @understood/worker
+
+      - name: Upload supervisor bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: apps/supervisor/dist/*
+          target: ${{ secrets.DEPLOY_PATH }}/static/supervisor
+          strip_components: 3
+          overwrite: true
+          rm: true
+
+      - name: Upload worker bundle
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: apps/worker/dist/*
+          target: ${{ secrets.DEPLOY_PATH }}/static/worker
+          strip_components: 3
+          overwrite: true
+          rm: true
+
+      - name: Pull image and restart
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: IMAGE,GHCR_READ_TOKEN,GHCR_USER
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker pull "$IMAGE"
+            IMAGE="$IMAGE" docker compose --env-file .env.production up -d --no-deps api pipeline caddy
+            docker image prune -f
+
+      - name: Smoke check
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "https://${{ secrets.DOMAIN }}/healthz" > /dev/null; then break; fi
+            if [ "$i" -eq 20 ]; then echo "healthz did not return 200"; exit 1; fi
+            sleep 3
+          done
+          curl -fsS "https://${{ secrets.DOMAIN }}/" > /dev/null
+          curl -fsS "https://${{ secrets.DOMAIN }}/i/" > /dev/null

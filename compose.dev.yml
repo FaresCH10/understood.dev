@@ -1,0 +1,84 @@
+services:
+  mongo:
+    image: mongo:7
+    command: ['--replSet', 'rs0', '--bind_ip_all', '--port', '27017']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    entrypoint:
+      - mongosh
+      - --host
+      - mongo
+      - --quiet
+      - --eval
+      - |
+        try { rs.status() } catch (error) {
+          rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] })
+        }
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: understood
+      MINIO_ROOT_PASSWORD: understood-dev-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+
+  api:
+    build: .
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      APP_URL: http://localhost:3000
+      MONGODB_URI: mongodb://mongo:27017/understood?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      PROCESS_ROLE: both
+      MEDIA_DRIVER: local
+      MEDIA_LOCAL_DIR: /data/media
+      AI_DRIVER: mock
+      EMAIL_DRIVER: console
+      PIPELINE_ALL_LANGUAGES: 'true'
+    ports:
+      - '3000:3000'
+    volumes:
+      - api-media:/data/media
+
+volumes:
+  mongo-data:
+  redis-data:
+  minio-data:
+  api-media:
