@@ -1,0 +1,62 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "supervisor": {
+      "root": "apps/supervisor",
+      "framework": "vite",
+      "installCommand": "if [ -f package-lock.json ]; then MONGOMS_DISABLE_POSTINSTALL=true npm ci --no-audit --no-fund; else MONGOMS_DISABLE_POSTINSTALL=true npm ci --prefix ../.. --no-audit --no-fund; fi",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+    },
+    "worker": {
+      "root": "apps/worker",
+      "framework": "vite",
+      "installCommand": "if [ -f package-lock.json ]; then MONGOMS_DISABLE_POSTINSTALL=true npm ci --no-audit --no-fund; else MONGOMS_DISABLE_POSTINSTALL=true npm ci --prefix ../.. --no-audit --no-fund; fi",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        { "source": "/i/assets/(.*)", "destination": "/assets/$1" },
+        { "source": "/i/manifest.webmanifest", "destination": "/manifest.webmanifest" },
+        { "source": "/i/icon.svg", "destination": "/icon.svg" },
+        { "source": "/i/sw.js", "destination": "/sw.js" },
+        { "source": "/i", "destination": "/index.html" },
+        { "source": "/i/(.*)", "destination": "/index.html" }
+      ]
+    },
+    "api": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "Dockerfile"
+    }
+  },
+  "daemons": {
+    "pipeline": {
+      "root": ".",
+      "entrypoint": "Dockerfile",
+      "command": ["sh", "-c", "export PROCESS_ROLE=worker; exec node dist/server.js"],
+      "instances": { "iad1": 1 }
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Permissions-Policy", "value": "microphone=(self), camera=(self), geolocation=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; worker-src 'self'" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/healthz", "destination": { "service": "api" } },
+    { "source": "/media/(.*)", "destination": { "service": "api" } },
+    { "source": "/i", "destination": { "service": "worker" } },
+    { "source": "/i/(.*)", "destination": { "service": "worker" } },
+    { "source": "/(.*)", "destination": { "service": "supervisor" } }
+  ]
+}
