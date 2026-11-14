@@ -34,4 +34,4 @@ RUN mkdir -p /data/media && chown -R node:node /data /app
 USER node
 WORKDIR /app/apps/api
 EXPOSE 80
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/bootstrap.js"]
