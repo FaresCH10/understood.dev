@@ -35,7 +35,10 @@ export function requireSameOrigin(req: Request, _res: Response, next: NextFuncti
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   const origin = req.header('origin');
   if (!origin) return next();
-  if (origin !== appOrigin()) return next(new AppError('FORBIDDEN'));
+  const forwardedHost = req.header('x-forwarded-host')?.split(',')[0]?.trim();
+  const hosts = [forwardedHost, req.get('host')].filter((host): host is string => Boolean(host));
+  const sameHost = hosts.some((host) => `${req.protocol}://${host}`.toLowerCase() === origin.toLowerCase());
+  if (origin.toLowerCase() !== appOrigin() && !sameHost) return next(new AppError('FORBIDDEN'));
   next();
 }
 
