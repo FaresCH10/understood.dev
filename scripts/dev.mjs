@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyDevDefaults, replicaSetError } from './dev-config.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const isWin = process.platform === 'win32';
@@ -13,10 +14,11 @@ const npm = 'npm';
 try {
   process.loadEnvFile(path.join(root, 'apps/api/.env'));
 } catch {
-  console.log('[env] apps/api/.env not found — using defaults (run from apps/api/.env.example)');
+  console.log('[env] apps/api/.env not found — using local development defaults');
 }
 
-const MONGO_URI = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/understood?replicaSet=rs0';
+applyDevDefaults(process.env);
+const MONGO_URI = process.env.MONGODB_URI;
 const API_PORT = Number(process.env.PORT ?? 4000);
 const API_URL = `http://localhost:${API_PORT}`;
 const SUPERVISOR_URL = 'http://localhost:5173';
@@ -115,7 +117,7 @@ async function ensureReplicaSet() {
       });
       console.log('[db] initialized replica set "rs0"');
     } catch (error) {
-      if (error?.codeName !== 'AlreadyInitialized') throw error;
+      if (error?.codeName !== 'AlreadyInitialized') throw replicaSetError(error, mongoTarget.port);
     }
     const started = Date.now();
     while (Date.now() - started < 20_000) {
@@ -275,8 +277,9 @@ async function main() {
   console.log(`\n${'='.repeat(64)}`);
   console.log(' Understood is running');
   console.log('='.repeat(64));
-  console.log(` Supervisor : ${SUPERVISOR_URL}`);
-  console.log(` Worker app : ${SUPERVISOR_URL}/i/<share-link>`);
+  console.log(` Homepage   : ${SUPERVISOR_URL}`);
+  console.log(` Sign in    : ${SUPERVISOR_URL}/signin`);
+  console.log(` Worker app : ${SUPERVISOR_URL}/i/`);
   if (seededWorkerUrl) console.log(` Demo worker: ${seededWorkerUrl}`);
   if (signInUrl) {
     console.log('\n Sign in (single use, 15 minutes):');

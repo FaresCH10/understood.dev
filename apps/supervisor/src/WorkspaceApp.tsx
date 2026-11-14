@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { LANGUAGES, LANGUAGE_META, type Language } from "@understood/shared";
 import { api, download, errorMessage } from "./api";
+import "./styles.css";
 import "./workspace.css";
 
 type Row = Record<string, any>;
@@ -65,9 +66,11 @@ function Empty({ children }: { children: ReactNode }) {
 
 function StaffAuth({
   onSignedIn,
+  onSigningIn,
   ar,
 }: {
-  onSignedIn: () => void;
+  onSignedIn: () => Promise<void>;
+  onSigningIn: (pending: boolean) => void;
   ar: boolean;
 }) {
   const params = new URLSearchParams(location.search);
@@ -78,7 +81,7 @@ function StaffAuth({
       ? "verify"
       : location.pathname.includes("invitation") || params.has("invite")
         ? "invitation"
-        : "login";
+        : params.has("register") ? "register" : "login";
   const [mode, setMode] = useState(initialMode);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -95,14 +98,15 @@ function StaffAuth({
     e.preventDefault();
     setBusy(true);
     setMessage("");
+    if (mode === 'login') onSigningIn(true);
     try {
       if (mode === "login") {
         await api("/api/v1/auth/login", {
           method: "POST",
           body: { email: form.email, password: form.password },
         });
-        history.replaceState(null, "", "/");
-        onSignedIn();
+        history.replaceState(null, "", "/app");
+        await onSignedIn();
       }
       if (mode === "register") {
         await api("/api/v1/auth/register", {
@@ -160,6 +164,7 @@ function StaffAuth({
       setMessage(errorMessage(err));
     } finally {
       setBusy(false);
+      onSigningIn(false);
     }
   };
   const text =
@@ -320,9 +325,14 @@ function StaffAuth({
   );
 }
 
-export default function WorkspaceApp() {
+export default function WorkspaceApp({ onLoadingChange }: { onLoadingChange?: (pending: boolean) => void }) {
   const [workspace, setWorkspace] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
+  useEffect(() => {
+    onLoadingChange?.(loading || signingIn || initialDataLoading);
+  }, [loading, signingIn, initialDataLoading, onLoadingChange]);
   const [page, setPage] = useState("today");
   const [site, setSite] = useState("");
   const [ar, setAr] = useState(
@@ -341,9 +351,11 @@ export default function WorkspaceApp() {
   };
   const loadWorkspace = async () => {
     setLoading(true);
+    setInitialDataLoading(true);
     try {
       const { data: result } = await api<Row>(`${ACCESS}/workspace`);
       setWorkspace(result);
+      if (location.pathname === '/signin') history.replaceState(null, '', '/app');
       setDetail(null);
       setData({});
       setPage(result.entitlement?.active === false || result.user?.role === 'administrator' ? 'settings' : 'today');
@@ -353,6 +365,7 @@ export default function WorkspaceApp() {
       );
     } catch {
       setWorkspace(null);
+      setInitialDataLoading(false);
     } finally {
       setLoading(false);
     }
@@ -426,6 +439,8 @@ export default function WorkspaceApp() {
       }
     } catch (err) {
       setError(errorMessage(err));
+    } finally {
+      setInitialDataLoading(false);
     }
   };
   useEffect(() => {
@@ -470,12 +485,7 @@ export default function WorkspaceApp() {
       setError(errorMessage(error));
     }
   };
-  if (loading)
-    return (
-      <div className="ws-loading">
-        Understood<span>Preparing your workspace…</span>
-      </div>
-    );
+  if (loading) return null;
   if (!workspace)
     return (
       <>
@@ -484,7 +494,7 @@ export default function WorkspaceApp() {
             {ar ? "English" : "العربية"}
           </Button>
         </div>
-        <StaffAuth onSignedIn={() => void loadWorkspace()} ar={ar} />
+        <StaffAuth onSignedIn={loadWorkspace} onSigningIn={setSigningIn} ar={ar} />
       </>
     );
   const role = workspace.user?.role ?? "owner";

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { BrandLoadingBoundary } from '@understood/ui';
 import {
   LANGUAGES,
   LANGUAGE_META,
@@ -152,6 +153,13 @@ function PushToggle({
   );
 }
 export default function WorkerPortal() {
+  const [loading, setLoading] = useState(true);
+  return <BrandLoadingBoundary loading={loading}>
+    <WorkerContent onLoadingChange={setLoading} />
+  </BrandLoadingBoundary>;
+}
+
+function WorkerContent({ onLoadingChange }: { onLoadingChange: (pending: boolean) => void }) {
   const browser = (navigator.language ?? "en").split("-")[0];
   const [language, setLanguage] = useState<Language>(
     isLanguage(browser) ? browser : "en",
@@ -160,6 +168,10 @@ export default function WorkerPortal() {
   const meta = LANGUAGE_META[language];
   const [boot, setBoot] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+  useEffect(() => {
+    onLoadingChange(loading || signingIn);
+  }, [loading, signingIn, onLoadingChange]);
   const [form, setForm] = useState({
     companyId: "",
     workerId: "",
@@ -313,6 +325,7 @@ export default function WorkerPortal() {
   const login = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    setSigningIn(true);
     setError("");
     try {
       await request("/auth/login", form);
@@ -324,6 +337,7 @@ export default function WorkerPortal() {
       setError(message(err));
     } finally {
       setBusy(false);
+      setSigningIn(false);
     }
   };
   const logout = async () => {
@@ -392,13 +406,7 @@ export default function WorkerPortal() {
       setError(s.error);
     }
   };
-  if (loading)
-    return (
-      <div className="wp-loading">
-        <b>u</b>
-        <span>Understood</span>
-      </div>
-    );
+  if (loading) return null;
   const alerts = (
     <>
       {!online && (

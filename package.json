@@ -20,7 +20,8 @@
     "test:unit": "npm run test --workspace @understood/api -- src/__tests__/unit.test.ts src/__tests__/runtime.test.ts",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
-    "test:backup": "node --test scripts/backup.test.mjs"
+    "test:backup": "node --test scripts/backup.test.mjs",
+    "test:dev": "node --test scripts/dev-config.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1"

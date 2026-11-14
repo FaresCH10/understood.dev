@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 const password='Understood-demo-2026!';
 test('supervisor reviews and sends; worker acknowledges then completes independently',async({page,browser})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
-  await page.goto('/');
+  await page.goto('/signin');
   await page.getByLabel('Work email').fill('owner@demo.understood.local');
   await page.getByLabel('Password',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
@@ -55,7 +55,7 @@ test('verification email links open the correct form and Arabic layout is RTL',a
   await expect(page.getByRole('heading',{name:'Set a new password',exact:true})).toBeVisible();
   await page.goto('/signin?invite=example-invitation-token-for-browser-test');
   await expect(page.getByRole('heading',{name:'Join your team',exact:true})).toBeVisible();
-  await page.goto('/');
+  await page.goto('/signin');
   await page.getByRole('button',{name:'العربية',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('dir','rtl');
   await page.screenshot({path:'.data/screenshots/staff-arabic-signin.png',fullPage:true});

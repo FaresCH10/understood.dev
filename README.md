@@ -4,6 +4,8 @@ Understood is a multilingual instruction and team coordination application for f
 
 This repository contains a TypeScript npm-workspaces monorepo: `apps/api` (Express/MongoDB/Redis), `apps/supervisor` (React/Vite), `apps/worker` (React/Vite), and shared language/schema/design packages. The original standalone visual prototype is in `design/prototype`.
 
+The landing page and both sign-in flows share the animated brand loader in `packages/ui`. It holds the completed logo until loading finishes and respects the device's reduced-motion preference.
+
 ## Development
 
 Use Node **24 LTS** and npm. Node 20 is no longer the deployment runtime. Install Docker Desktop/Engine and start it, or provide a transaction-capable MongoDB replica set and Redis independently.
@@ -18,9 +20,11 @@ npm run dev
 
 The Mongo replica set advertises `localhost:27017` for applications running on the host. The optional containerized API profile uses `directConnection=true` to connect through the Docker service name. Redis and Mongo ports bind only to loopback. The API profile is intentionally not started by default, avoiding a second API competing with `npm run dev`.
 
-Supervisor: `http://localhost:5173`. Worker pages: the same origin under `/i/`. API: `http://localhost:4000`. The development script prints a single-use sign-in link; `npm run signin` creates another. Demo seeding is for a local database only. Do not use the example keys on a public service.
+Public landing page: `http://localhost:5173/`. Supervisor sign-in: `/signin`; workspace: `/app`. Worker pages: the same origin under `/i/`. API: `http://localhost:4000`. The development script prints a single-use sign-in link; `npm run signin` creates another. Demo seeding is for a local database only. Do not use the example keys on a public service.
 
 Mock AI is the default for development. It returns a fixed example and synthetic audio bytes; it is not a functional translator. Live mode needs configured Groq and Azure Speech credentials. DeepL is optional. Worker interface locales and actual provider/voice capabilities are separate; validate the languages required by your crews.
+
+Without `apps/api/.env`, `npm run dev` starts a project-owned MongoDB replica set on port **27018**, with persistent data in `.data/db-dev`. An installed or cached `mongod` executable is required. This leaves any system MongoDB on port 27017 alone. Redis is optional for this local-only mode; sessions and background jobs use the development in-memory adapters. Stop with Ctrl+C. Explicit environment settings take precedence; the Docker setup above continues to use port 27017 through `apps/api/.env`.
 
 ## Verification
 

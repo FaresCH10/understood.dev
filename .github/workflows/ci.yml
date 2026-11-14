@@ -35,6 +35,7 @@ jobs:
           MONGOMS_DISABLE_POSTINSTALL: 'true'
       - run: npm run typecheck --workspaces --if-present
       - run: npm run test:backup
+      - run: npm run test:dev
       - run: npm run test --workspaces --if-present
         env:
           TEST_MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0

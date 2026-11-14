@@ -7,6 +7,7 @@ COPY apps/supervisor/package.json apps/supervisor/package.json
 COPY apps/worker/package.json apps/worker/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/design-tokens/package.json packages/design-tokens/package.json
+COPY packages/ui/package.json packages/ui/package.json
 ENV MONGOMS_DISABLE_POSTINSTALL=true
 RUN npm ci --no-audit --no-fund
 
@@ -27,6 +28,7 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/design-tokens ./packages/design-tokens
+COPY --from=build /app/packages/ui ./packages/ui
 RUN mkdir -p /data/media && chown -R node:node /data /app
 
 USER node
